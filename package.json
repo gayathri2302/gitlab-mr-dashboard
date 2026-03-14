@@ -1,0 +1,14 @@
+{
+  "name": "gitlab-mr-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "setup": "npm install && cd server && npm install && cd ../client && npm install && echo '\n✅ Setup complete! Run: npm start'",
+    "start": "concurrently --kill-others --names \"API,UI\" --prefix-colors \"cyan,magenta\" \"npm run start:server\" \"npm run start:client\"",
+    "start:server": "cd server && npx tsx src/api-server.ts",
+    "start:client": "cd client && npx vite --open"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
