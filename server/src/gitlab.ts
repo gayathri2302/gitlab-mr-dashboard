@@ -20,11 +20,20 @@ export function createGitlabClient(projectId: number | string) {
   const api = makeApi(projectId);
 
   return {
-    listMRs: async (state = 'opened', perPage = 50) => {
-      const res = await api.get('/merge_requests', {
-        params: { state, per_page: perPage, order_by: 'updated_at', sort: 'desc' },
-      });
-      return res.data;
+    listMRs: async (state = 'opened', perPage = 100) => {
+      const all: any[] = [];
+      let page = 1;
+      while (true) {
+        const res = await api.get('/merge_requests', {
+          params: { state, per_page: perPage, order_by: 'updated_at', sort: 'desc', page },
+        });
+        const items: any[] = res.data;
+        all.push(...items);
+        const totalPages = Number(res.headers['x-total-pages'] || 1);
+        if (page >= totalPages || items.length === 0) break;
+        page++;
+      }
+      return all;
     },
 
     getMR: async (mrIid: number) => {
