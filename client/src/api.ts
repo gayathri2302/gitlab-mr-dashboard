@@ -1,7 +1,31 @@
 import axios from 'axios';
 import type { MR, Diff, Commit, Pipeline, Job, AwardEmoji } from './types';
+import { getStoredToken } from './auth/SessionContext';
 
-const http = axios.create({ baseURL: '/api' });
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
+const http = axios.create({ baseURL: API_BASE });
+
+// Attach JWT to every request
+http.interceptors.request.use(config => {
+  const token = getStoredToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Auto-logout on 401
+http.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response?.status === 401) {
+      sessionStorage.clear();
+      window.location.reload();
+    }
+    return Promise.reject(err);
+  },
+);
 
 export function apiFor(projectId: number) {
   const p = projectId;

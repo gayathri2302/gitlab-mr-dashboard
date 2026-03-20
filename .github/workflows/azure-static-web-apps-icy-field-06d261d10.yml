@@ -45,8 +45,7 @@ jobs:
           output_location: "dist" # Vite outputs to dist, not build
           github_id_token: ${{ steps.idtoken.outputs.result }}
         env:
-          VITE_AZURE_CLIENT_ID: ${{ secrets.VITE_AZURE_CLIENT_ID }}
-          VITE_AZURE_TENANT_ID: ${{ secrets.VITE_AZURE_TENANT_ID }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:

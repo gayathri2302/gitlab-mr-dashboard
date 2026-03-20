@@ -36,3 +36,8 @@ coverage/
 
 # MCP runtime state
 .state/
+
+# Backend lives in separate repo (github.com/gayathri2302/service)
+server/
+package.json
+package-lock.json

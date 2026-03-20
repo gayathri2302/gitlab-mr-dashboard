@@ -5,8 +5,14 @@ import CreateMRModal from './components/CreateMRModal';
 import RepoPipelines from './components/RepoPipelines';
 import type { MR } from './types';
 import { REPOS } from './types';
+import { SessionProvider, useSession } from './auth/SessionContext';
+import LoginPage from './components/auth/LoginPage';
+import ChangePasswordPage from './components/auth/ChangePasswordPage';
+import ForgotPasswordPage from './components/auth/ForgotPasswordPage';
+import ResetPasswordPage from './components/auth/ResetPasswordPage';
 
 type ViewMode = 'mrs' | 'pipelines';
+type AuthView = 'login' | 'forgot';
 
 const repoTabColors: Record<string, string> = {
   blue:   'data-[active=true]:text-blue-400   data-[active=true]:border-blue-400',
@@ -22,7 +28,8 @@ const repoActiveBg: Record<string, string> = {
   orange: 'bg-orange-500',
 };
 
-export default function App() {
+function Dashboard() {
+  const { user, logout } = useSession();
   const [activeRepoIdx, setActiveRepoIdx] = useState(0);
   const [selectedMR, setSelectedMR] = useState<MR | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -88,8 +95,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* View toggle */}
-        <div className="flex items-center gap-0 border-l border-gray-800">
+        {/* View toggle + user */}
+        <div className="flex items-center border-l border-gray-800">
           {([
             { value: 'mrs', label: 'Merge Requests' },
             { value: 'pipelines', label: 'Pipelines' },
@@ -103,6 +110,16 @@ export default function App() {
               {option.label}
             </button>
           ))}
+          <div className="flex items-center gap-2 px-4 border-l border-gray-800">
+            <span className="text-xs text-gray-500 hidden sm:inline">{user?.name}</span>
+            <button
+              onClick={logout}
+              className="text-xs text-gray-600 hover:text-red-400 transition-colors px-1 py-0.5"
+              title="Sign out"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </div>
 
@@ -156,5 +173,46 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+function AuthGate() {
+  const { token, user } = useSession();
+  const [authView, setAuthView] = useState<AuthView>('login');
+
+  // Password reset via ?token= in URL
+  const params      = new URLSearchParams(window.location.search);
+  const resetToken  = params.get('token');
+  if (resetToken) {
+    return (
+      <ResetPasswordPage
+        token={resetToken}
+        onDone={() => {
+          window.history.replaceState({}, '', window.location.pathname);
+          setAuthView('login');
+        }}
+      />
+    );
+  }
+
+  if (!token || !user) {
+    if (authView === 'forgot') {
+      return <ForgotPasswordPage onBack={() => setAuthView('login')} />;
+    }
+    return <LoginPage onForgotPassword={() => setAuthView('forgot')} />;
+  }
+
+  if (user.mustChangePassword) {
+    return <ChangePasswordPage />;
+  }
+
+  return <Dashboard />;
+}
+
+export default function App() {
+  return (
+    <SessionProvider>
+      <AuthGate />
+    </SessionProvider>
   );
 }

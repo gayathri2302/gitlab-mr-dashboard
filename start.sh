@@ -2,41 +2,20 @@
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$DIR"
+cd "$DIR/client"
 
-echo "Starting GitLab MR Dashboard..."
+echo "Starting GitLab MR Dashboard (frontend)..."
 
-# Install if needed
-if [ ! -d "server/node_modules" ]; then
-  echo "Installing server dependencies..."
-  cd server && npm install && cd ..
-fi
-if [ ! -d "client/node_modules" ]; then
+if [ ! -d "node_modules" ]; then
   echo "Installing client dependencies..."
-  cd client && npm install && cd ..
+  npm install
 fi
-
-# Start server and client in background
-echo "Starting API server on http://localhost:3001"
-cd server && npx tsx src/api-server.ts &
-SERVER_PID=$!
-cd "$DIR"
-
-sleep 2
-
-echo "Starting UI on http://localhost:5173"
-cd client && npx vite &
-CLIENT_PID=$!
-cd "$DIR"
-
-sleep 2
-open http://localhost:5173
 
 echo ""
-echo "Dashboard running at http://localhost:5173"
-echo "API running at http://localhost:3001"
+echo "Backend (gitlabservice) must be running separately on http://localhost:3001"
+echo "Starting UI on http://localhost:5173"
 echo ""
 echo "Press Ctrl+C to stop"
+echo ""
 
-trap "kill $SERVER_PID $CLIENT_PID 2>/dev/null; exit 0" INT TERM
-wait
+npx vite --open
