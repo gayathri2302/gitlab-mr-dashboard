@@ -57,6 +57,12 @@ export function apiFor(projectId: number) {
     setDraft: (iid: number, draft: boolean) =>
       http.post<MR>(`/${p}/mrs/${iid}/draft`, { draft }).then(r => r.data),
 
+    approveMR: (iid: number) =>
+      http.post<MR>(`/${p}/mrs/${iid}/approve`).then(r => r.data),
+
+    unapproveMR: (iid: number) =>
+      http.post<MR>(`/${p}/mrs/${iid}/unapprove`).then(r => r.data),
+
     createMR: (body: {
       source_branch: string;
       target_branch: string;
@@ -103,6 +109,15 @@ export function apiFor(projectId: number) {
 
     removeEmoji: (iid: number, awardId: number) =>
       http.delete(`/${p}/mrs/${iid}/emojis/${awardId}`).then(r => r.data),
+
+    getMRDiscussions: (iid: number) =>
+      http.get(`/${p}/mrs/${iid}/discussions`).then(r => r.data),
+
+    replyToDiscussion: (iid: number, discussionId: string, body: string) =>
+      http.post(`/${p}/mrs/${iid}/discussions/${discussionId}/reply`, { body }).then(r => r.data),
+
+    resolveDiscussion: (iid: number, discussionId: string, resolved: boolean) =>
+      http.put(`/${p}/mrs/${iid}/discussions/${discussionId}/resolve`, { resolved }).then(r => r.data),
 
     openInSourceTree: (iid: number) =>
       http.post<{ success: boolean; branch: string; message: string }>(`/${p}/mrs/${iid}/open-sourcetree`).then(r => r.data),

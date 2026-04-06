@@ -78,6 +78,24 @@ export interface ApprovalUser {
   avatar_url: string;
 }
 
+export interface DiscussionNote {
+  id: number;
+  body: string;
+  author: { id: number; name: string; username: string; avatar_url: string };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Discussion {
+  id: string;
+  individual_note: boolean;
+  notes: DiscussionNote[];
+  resolved: boolean;
+  resolvable: boolean;
+  resolved_by?: { id: number; name: string; username: string; avatar_url: string };
+  resolved_at?: string;
+}
+
 export interface Repo {
   id: number;
   name: string;

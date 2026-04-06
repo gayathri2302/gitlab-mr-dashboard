@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFor } from '../api';
-import type { MR, Diff, AwardEmoji } from '../types';
+import type { MR, Diff, AwardEmoji, Discussion } from '../types';
 import DiffViewer from './DiffViewer';
 import PipelineView from './PipelineView';
 import CommitsView from './CommitsView';
@@ -29,7 +29,7 @@ interface Props {
   onMutated: (updated?: MR) => void;
 }
 
-type Tab = 'details' | 'changes' | 'commits' | 'pipeline';
+type Tab = 'details' | 'changes' | 'commits' | 'pipeline' | 'discussions';
 
 const mergeStatusBadge: Record<string, string> = {
   mergeable: 'bg-green-500 text-white',
@@ -63,12 +63,17 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
   const [merging, setMerging] = useState(false);
   const [closing, setClosing] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [sourcetreeMsg, setSourcetreeMsg] = useState('');
   const [showMergeConfirm, setShowMergeConfirm] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
+  const [discussions, setDiscussions] = useState<Discussion[]>([]);
+  const [discussionsLoading, setDiscussionsLoading] = useState(false);
+  const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
 
   useEffect(() => {
     setMr(initialMR);
@@ -77,11 +82,14 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
     setCommitCount(null);
     setApprovals([]);
     setEmojis([]);
+    setDiscussions([]);
     setActionMsg(null);
     setSourcetreeMsg('');
     setShowMergeConfirm(false);
     setShowCloseConfirm(false);
     setShowEdit(false);
+    setReplyText({});
+    setReplyingTo(null);
 
     // Load approvals + emojis eagerly
     api.getMRApprovals(initialMR.iid)
@@ -143,7 +151,38 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
     finally { setDiffsLoading(false); }
   };
 
-  // ── Actions ──────────────────────────────────────────────────────────────
+  const loadDiscussions = async () => {
+    if (discussions.length && !discussionsLoading) return;
+    setDiscussionsLoading(true);
+    try { setDiscussions(await api.getMRDiscussions(mr.iid)); }
+    catch (e: any) { flash(e.message, false); }
+    finally { setDiscussionsLoading(false); }
+  };
+
+  const handleReplyToDiscussion = async (discussionId: string) => {
+    const body = replyText[discussionId];
+    if (!body || !body.trim()) return;
+    setReplyingTo(discussionId);
+    try {
+      await api.replyToDiscussion(mr.iid, discussionId, body);
+      setReplyText(prev => ({ ...prev, [discussionId]: '' }));
+      flash('Reply posted successfully');
+      await loadDiscussions();
+    } catch (e: any) {
+      flash(e.response?.data?.error || e.message, false);
+    } finally { setReplyingTo(null); }
+  };
+
+  const handleResolveDiscussion = async (discussionId: string, resolved: boolean) => {
+    setReplyingTo(discussionId);
+    try {
+      await api.resolveDiscussion(mr.iid, discussionId, !resolved);
+      flash(`Discussion ${!resolved ? 'resolved' : 'unresolved'}`);
+      await loadDiscussions();
+    } catch (e: any) {
+      flash(e.response?.data?.error || e.message, false);
+    } finally { setReplyingTo(null); }
+  };
 
   const handleMerge = async () => {
     setMerging(true);
@@ -190,6 +229,38 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
     } catch (e: any) {
       flash(e.response?.data?.error || e.message, false);
     } finally { setDrafting(false); }
+  };
+
+  const handleApprove = async () => {
+    setApproving(true);
+    try {
+      const updated = await api.approveMR(mr.iid);
+      setMr(updated);
+      // Refresh approvals
+      api.getMRApprovals(mr.iid)
+        .then(d => setApprovals((d.approved_by || []).map((a: any) => a.user)))
+        .catch(() => {});
+      flash(`✓ MR !${mr.iid} approved`);
+      onMutated(updated);
+    } catch (e: any) {
+      flash(e.response?.data?.error || e.message, false);
+    } finally { setApproving(false); }
+  };
+
+  const handleUnapprove = async () => {
+    setApproving(true);
+    try {
+      const updated = await api.unapproveMR(mr.iid);
+      setMr(updated);
+      // Refresh approvals
+      api.getMRApprovals(mr.iid)
+        .then(d => setApprovals((d.approved_by || []).map((a: any) => a.user)))
+        .catch(() => {});
+      flash(`✗ MR !${mr.iid} unapproved`);
+      onMutated(updated);
+    } catch (e: any) {
+      flash(e.response?.data?.error || e.message, false);
+    } finally { setApproving(false); }
   };
 
   const handleOpenSourceTree = async () => {
@@ -338,6 +409,21 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
             </button>
           )}
 
+          {/* Approve toggle */}
+          {mr.state === 'opened' && (
+            <button
+              onClick={() => approvals.length > 0 ? handleUnapprove() : handleApprove()}
+              disabled={approving}
+              className={`text-xs px-3 py-1.5 rounded disabled:opacity-50 ${
+                approvals.length > 0
+                  ? 'bg-blue-800 hover:bg-blue-700 text-blue-200'
+                  : 'bg-green-800 hover:bg-green-700 text-green-200'
+              }`}
+            >
+              {approving ? '...' : approvals.length > 0 ? '✓ Approved' : '✓ Approve'}
+            </button>
+          )}
+
           {/* Close / Reopen */}
           {mr.state === 'opened' && (
             <button
@@ -418,10 +504,14 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
 
       {/* Tabs */}
       <div className="flex border-b border-gray-800 shrink-0">
-        {(['details', 'changes', 'commits', 'pipeline'] as Tab[]).map(t => (
+        {(['details', 'changes', 'commits', 'pipeline', 'discussions'] as Tab[]).map(t => (
           <button
             key={t}
-            onClick={() => { setTab(t); if (t === 'changes') loadDiffs(); }}
+            onClick={() => {
+              setTab(t);
+              if (t === 'changes') loadDiffs();
+              if (t === 'discussions') loadDiscussions();
+            }}
             className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${
               tab === t ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-500 hover:text-gray-300'
             }`}
@@ -434,6 +524,9 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
             )}
             {t === 'commits' && commitCount !== null && (
               <span className="ml-1.5 bg-gray-700 text-gray-400 text-xs px-1.5 py-0.5 rounded-full">{commitCount}</span>
+            )}
+            {t === 'discussions' && discussions.length > 0 && (
+              <span className="ml-1.5 bg-gray-700 text-gray-400 text-xs px-1.5 py-0.5 rounded-full">{discussions.length}</span>
             )}
           </button>
         ))}
@@ -481,6 +574,88 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
         )}
         {tab === 'pipeline' && (
           <PipelineView mrIid={mr.iid} projectId={projectId} />
+        )}
+        {tab === 'discussions' && (
+          <div className="p-4 overflow-y-auto flex-1">
+            {discussionsLoading ? (
+              <div className="text-gray-500 text-sm">Loading discussions...</div>
+            ) : discussions.length === 0 ? (
+              <div className="text-gray-600 text-sm italic">No discussions yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {discussions.map(discussion => (
+                  <div key={discussion.id} className={`border rounded-lg p-3 ${discussion.resolved ? 'border-green-800 bg-green-900 bg-opacity-20' : 'border-gray-700 bg-gray-800 bg-opacity-30'}`}>
+                    {/* Discussion thread */}
+                    <div className="space-y-3">
+                      {discussion.notes.map((note, idx) => (
+                        <div key={note.id} className={`${idx > 0 ? 'ml-4 border-l border-gray-700 pl-3' : ''}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <img src={note.author.avatar_url} alt={note.author.name} className="w-5 h-5 rounded-full" />
+                            <span className="text-xs font-semibold text-gray-300">{note.author.name}</span>
+                            <span className="text-xs text-gray-500">@{note.author.username}</span>
+                            <span className="text-xs text-gray-600">
+                              {new Date(note.created_at).toLocaleDateString()} {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-300 whitespace-pre-wrap">{note.body}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Reply input */}
+                    {!discussion.resolved && (
+                      <div className="mt-3 pt-3 border-t border-gray-700">
+                        <textarea
+                          value={replyText[discussion.id] || ''}
+                          onChange={(e) => setReplyText(prev => ({ ...prev, [discussion.id]: e.target.value }))}
+                          placeholder="Reply to discussion..."
+                          rows={2}
+                          className="w-full bg-gray-700 text-gray-100 text-xs px-2 py-1 rounded border border-gray-600 focus:border-orange-500 focus:outline-none"
+                        />
+                        <div className="flex gap-2 mt-2 justify-between">
+                          <button
+                            onClick={() => handleReplyToDiscussion(discussion.id)}
+                            disabled={!replyText[discussion.id]?.trim() || replyingTo === discussion.id}
+                            className="text-xs bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-blue-100 px-2 py-1 rounded"
+                          >
+                            {replyingTo === discussion.id ? 'Posting...' : 'Reply'}
+                          </button>
+                          {discussion.resolvable && (
+                            <button
+                              onClick={() => handleResolveDiscussion(discussion.id, discussion.resolved)}
+                              disabled={replyingTo === discussion.id}
+                              className="text-xs bg-green-700 hover:bg-green-600 disabled:opacity-50 text-green-100 px-2 py-1 rounded"
+                            >
+                              {replyingTo === discussion.id ? 'Processing...' : 'Mark as Resolved'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resolved indicator */}
+                    {discussion.resolved && (
+                      <div className="mt-3 pt-3 border-t border-green-700 flex items-center justify-between">
+                        <span className="text-xs text-green-300 font-semibold">✓ Resolved</span>
+                        {discussion.resolved_by && (
+                          <span className="text-xs text-gray-400">
+                            by {discussion.resolved_by.name} on {new Date(discussion.resolved_at || '').toLocaleDateString()}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => handleResolveDiscussion(discussion.id, discussion.resolved)}
+                          disabled={replyingTo === discussion.id}
+                          className="text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 px-2 py-1 rounded"
+                        >
+                          {replyingTo === discussion.id ? 'Processing...' : 'Re-open'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
