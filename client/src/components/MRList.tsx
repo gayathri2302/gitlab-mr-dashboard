@@ -96,10 +96,16 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
       if (controller.signal.aborted) return;
 
       // Handle both wrapped { data, pagination } and raw array responses
-      const items: MR[] = Array.isArray(response) ? response : response.data;
+      let items: MR[] = Array.isArray(response) ? response : response.data;
       const pag = Array.isArray(response)
         ? { page, perPage: 20, totalPages: items.length < 20 ? page : page + 1, totalCount: 0 }
         : response.pagination;
+
+      // Client-side filter: GitLab search can return non-matching results
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        items = items.filter(mr => mr.title.toLowerCase().includes(term));
+      }
       
       if (append) {
         setMrs(prev => [...prev, ...items]);
