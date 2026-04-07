@@ -54,9 +54,18 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   const [pagination, setPagination] = useState<MRListResponse['pagination'] | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const observerRef = useRef<HTMLDivElement>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const requestInFlightRef = useRef(false);
+  const lastRequestRef = useRef<{ filter: string; search: string; page: number }>({ filter: '', search: '', page: 0 });
 
   const load = useCallback(async (state: string, page = 1, searchTerm = '', append = false) => {
+    // Prevent duplicate requests
+    if (requestInFlightRef.current) return;
+    if (!append && lastRequestRef.current.filter === state && lastRequestRef.current.search === searchTerm && page === 1) return;
+    if (append && lastRequestRef.current.page === page) return;
+
+    requestInFlightRef.current = true;
+    
     if (page === 1) {
       setLoading(true);
     } else {
@@ -75,48 +84,60 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
       
       setPagination(response.pagination);
       setHasMore(page < response.pagination.totalPages);
+      lastRequestRef.current = { filter: state, search: searchTerm, page };
     } catch {
       setError('Failed to load MRs');
       if (!append) setMrs([]);
     } finally {
       setLoading(false);
       setLoadingMore(false);
+      requestInFlightRef.current = false;
     }
   }, [api]);
 
-  // Reset and load when filter changes
-  useEffect(() => {
-    setMrs([]);
-    setPagination(null);
-    setHasMore(true);
-    load(filter, 1, search);
-  }, [filter, load]);
-
-  // Handle search with debouncing
+  // Load data when filter or search changes (without including load in deps)
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
     
-    searchTimeoutRef.current = setTimeout(() => {
+    // Debounce search requests
+    if (search === '' && filter !== lastRequestRef.current.filter) {
+      // Filter change without search - load immediately
       setMrs([]);
       setPagination(null);
       setHasMore(true);
-      load(filter, 1, search);
-    }, 300);
+      load(filter, 1, '', false);
+    } else if (search !== '') {
+      // Search change - debounce
+      searchTimeoutRef.current = setTimeout(() => {
+        setMrs([]);
+        setPagination(null);
+        setHasMore(true);
+        load(filter, 1, search, false);
+      }, 300);
+    } else if (refreshKey) {
+      // Refresh key change
+      setMrs([]);
+      setPagination(null);
+      setHasMore(true);
+      load(filter, 1, search, false);
+    }
 
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [search, filter, load]);
+  }, [filter, search, refreshKey, load]);
 
-  // Infinite scrolling
+  // Infinite scrolling with minimal dependencies
   useEffect(() => {
+    if (!observerRef.current) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && mrs.length > 0) {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && mrs.length > 0 && !requestInFlightRef.current) {
           const nextPage = (pagination?.page || 1) + 1;
           load(filter, nextPage, search, true);
         }
@@ -124,17 +145,14 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
       { threshold: 0.1 }
     );
 
-    const currentObserverRef = observerRef.current;
-    if (currentObserverRef) {
-      observer.observe(currentObserverRef);
-    }
+    observer.observe(observerRef.current);
 
     return () => {
-      if (currentObserverRef) {
-        observer.unobserve(currentObserverRef);
+      if (observerRef.current) {
+        observer.unobserve(observerRef.current);
       }
     };
-  }, [hasMore, loading, loadingMore, mrs.length, pagination?.page, filter, search, load]);
+  }, [pagination?.page, hasMore, mrs.length, filter, search, load]);
 
   const handleClose = async (e: React.MouseEvent, mr: MR) => {
     e.stopPropagation();
