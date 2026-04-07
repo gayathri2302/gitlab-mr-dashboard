@@ -21,6 +21,16 @@ export interface MR {
   draft: boolean;
 }
 
+export interface MRListResponse {
+  data: MR[];
+  pagination: {
+    page: number;
+    perPage: number;
+    totalPages: number;
+    totalCount: number;
+  };
+}
+
 export interface Diff {
   old_path: string;
   new_path: string;

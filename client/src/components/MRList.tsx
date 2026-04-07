@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFor } from '../api';
-import type { MR } from '../types';
+import type { MR, MRListResponse } from '../types';
 
 function renderWithJiraLinks(text: string) {
   const parts = text.split(/(NGSB[-\s]\d+)/gi);
@@ -45,25 +45,96 @@ const stateColor: Record<string, string> = {
 export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, refreshKey }: Props) {
   const api = apiFor(projectId);
   const [mrs, setMrs] = useState<MR[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState('opened');
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [closingId, setClosingId] = useState<number | null>(null);
+  const [pagination, setPagination] = useState<MRListResponse['pagination'] | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const observerRef = useRef<HTMLDivElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
 
-  const load = async (state: string) => {
-    setLoading(true);
+  const load = useCallback(async (state: string, page = 1, searchTerm = '', append = false) => {
+    if (page === 1) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     setError('');
+
     try {
-      setMrs(await api.listMRs(state));
+      const response: MRListResponse = await api.listMRs(state, page, 20, searchTerm);
+      
+      if (append) {
+        setMrs(prev => [...prev, ...response.data]);
+      } else {
+        setMrs(response.data);
+      }
+      
+      setPagination(response.pagination);
+      setHasMore(page < response.pagination.totalPages);
     } catch {
       setError('Failed to load MRs');
+      if (!append) setMrs([]);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  };
+  }, [api]);
 
-  useEffect(() => { load(filter); }, [filter, projectId, refreshKey]);
+  // Reset and load when filter changes
+  useEffect(() => {
+    setMrs([]);
+    setPagination(null);
+    setHasMore(true);
+    load(filter, 1, search);
+  }, [filter, load]);
+
+  // Handle search with debouncing
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setMrs([]);
+      setPagination(null);
+      setHasMore(true);
+      load(filter, 1, search);
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [search, filter, load]);
+
+  // Infinite scrolling
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && mrs.length > 0) {
+          const nextPage = (pagination?.page || 1) + 1;
+          load(filter, nextPage, search, true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentObserverRef = observerRef.current;
+    if (currentObserverRef) {
+      observer.observe(currentObserverRef);
+    }
+
+    return () => {
+      if (currentObserverRef) {
+        observer.unobserve(currentObserverRef);
+      }
+    };
+  }, [hasMore, loading, loadingMore, mrs.length, pagination?.page, filter, search, load]);
 
   const handleClose = async (e: React.MouseEvent, mr: MR) => {
     e.stopPropagation();
@@ -72,16 +143,12 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
     try {
       await api.closeMR(mr.iid);
       setMrs(prev => prev.map(m => m.iid === mr.iid ? { ...m, state: 'closed' } : m));
-      if (filter === 'opened') setMrs(prev => prev.filter(m => m.iid !== mr.iid));
+      if (filter === 'opened') {
+        setMrs(prev => prev.filter(m => m.iid !== mr.iid));
+      }
     } catch { /* ignore */ }
     finally { setClosingId(null); }
   };
-
-  const filtered = mrs.filter(mr =>
-    mr.title.toLowerCase().includes(search.toLowerCase()) ||
-    String(mr.iid).includes(search) ||
-    mr.source_branch.toLowerCase().includes(search.toLowerCase())
-  );
 
   return (
     <div className="flex flex-col h-full">
@@ -122,14 +189,17 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
 
       {/* Count */}
       <div className="px-3 py-1.5 border-b border-gray-800 flex items-center justify-between">
-        <span className="text-xs text-gray-600">{filtered.length} MR{filtered.length !== 1 ? 's' : ''}</span>
+        <span className="text-xs text-gray-600">
+          {pagination ? `${mrs.length} of ${pagination.totalCount} MR${pagination.totalCount !== 1 ? 's' : ''}` : `${mrs.length} MR${mrs.length !== 1 ? 's' : ''}`}
+        </span>
+        {loadingMore && <span className="text-xs text-gray-500">Loading more...</span>}
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
-        {loading && <div className="flex items-center justify-center h-24 text-gray-500 text-xs">Loading...</div>}
+        {loading && mrs.length === 0 && <div className="flex items-center justify-center h-24 text-gray-500 text-xs">Loading...</div>}
         {error && <div className="p-3 text-red-400 text-xs">{error}</div>}
-        {!loading && filtered.map(mr => (
+        {!loading && mrs.map(mr => (
           <div
             key={mr.id}
             onClick={() => onSelect(mr)}
@@ -167,8 +237,24 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
             )}
           </div>
         ))}
-        {!loading && !filtered.length && !error && (
-          <div className="p-4 text-center text-gray-600 text-xs">No MRs found</div>
+        
+        {/* Infinite scroll trigger */}
+        {hasMore && !loading && !loadingMore && mrs.length > 0 && (
+          <div ref={observerRef} className="flex items-center justify-center py-4">
+            <div className="text-xs text-gray-500">Loading more...</div>
+          </div>
+        )}
+        
+        {!loading && !loadingMore && !hasMore && mrs.length > 0 && (
+          <div className="flex items-center justify-center py-4">
+            <div className="text-xs text-gray-500">No more MRs to load</div>
+          </div>
+        )}
+        
+        {!loading && !error && mrs.length === 0 && (
+          <div className="p-4 text-center text-gray-600 text-xs">
+            {search ? 'No MRs found matching your search' : 'No MRs found'}
+          </div>
         )}
       </div>
     </div>

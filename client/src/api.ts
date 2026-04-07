@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { MR, Diff, Commit, Pipeline, Job, AwardEmoji } from './types';
+import type { MR, MRListResponse, Diff, Commit, Pipeline, Job, AwardEmoji } from './types';
 import { getStoredToken } from './auth/SessionContext';
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
@@ -30,8 +30,8 @@ http.interceptors.response.use(
 export function apiFor(projectId: number) {
   const p = projectId;
   return {
-    listMRs: (state = 'opened') =>
-      http.get<MR[]>(`/${p}/mrs`, { params: { state } }).then(r => r.data),
+    listMRs: (state = 'opened', page = 1, perPage = 20, search = '') =>
+      http.get<MRListResponse>(`/${p}/mrs`, { params: { state, page, per_page: perPage, search } }).then(r => r.data),
 
     getMR: (iid: number) =>
       http.get<MR>(`/${p}/mrs/${iid}`).then(r => r.data),
