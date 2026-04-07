@@ -55,8 +55,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   const [hasMore, setHasMore] = useState(true);
   const observerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const requestInFlightRef = useRef(false);
-  const loadedParamsRef = useRef<{ filter: string; search: string } | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Refs for stable IntersectionObserver callback
   const hasMoreRef = useRef(hasMore);
@@ -76,10 +75,12 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   mrsLengthRef.current = mrs.length;
 
   const loadMRs = async (state: string, page = 1, searchTerm = '', append = false) => {
-    // Prevent duplicate requests
-    if (requestInFlightRef.current) return;
-
-    requestInFlightRef.current = true;
+    // Abort any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     
     if (page === 1) {
       setLoading(true);
@@ -89,36 +90,40 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
     setError('');
 
     try {
-      const response: MRListResponse = await api.listMRs(state, page, 20, searchTerm);
+      const response = await api.listMRs(state, page, 20, searchTerm);
+
+      // If this request was aborted while awaiting, discard its results
+      if (controller.signal.aborted) return;
+
+      // Handle both wrapped { data, pagination } and raw array responses
+      const items: MR[] = Array.isArray(response) ? response : response.data;
+      const pag = Array.isArray(response)
+        ? { page, perPage: 20, totalPages: items.length < 20 ? page : page + 1, totalCount: 0 }
+        : response.pagination;
       
       if (append) {
-        setMrs(prev => [...prev, ...response.data]);
+        setMrs(prev => [...prev, ...items]);
       } else {
-        setMrs(response.data);
+        setMrs(items);
       }
       
-      setPagination(response.pagination);
-      setHasMore(page < response.pagination.totalPages);
-      loadedParamsRef.current = { filter: state, search: searchTerm };
-    } catch {
+      setPagination(pag);
+      setHasMore(page < pag.totalPages);
+    } catch (e: any) {
+      // Ignore errors from aborted requests
+      if (controller.signal.aborted) return;
       setError('Failed to load MRs');
       if (!append) setMrs([]);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
-      requestInFlightRef.current = false;
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   };
 
   // Initial load on mount and when filter/search change
   useEffect(() => {
-    const params = { filter, search };
-    const paramsChanged = !loadedParamsRef.current || 
-                          loadedParamsRef.current.filter !== params.filter ||
-                          loadedParamsRef.current.search !== params.search;
-
-    if (!paramsChanged) return;
-
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -159,7 +164,6 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
           !loadingRef.current &&
           !loadingMoreRef.current &&
           mrsLengthRef.current > 0 &&
-          !requestInFlightRef.current &&
           paginationRef.current
         ) {
           const nextPage = paginationRef.current.page + 1;
