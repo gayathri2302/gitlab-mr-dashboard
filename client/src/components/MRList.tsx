@@ -45,7 +45,7 @@ const stateColor: Record<string, string> = {
 export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, refreshKey }: Props) {
   const api = apiFor(projectId);
   const [mrs, setMrs] = useState<MR[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState('opened');
   const [search, setSearch] = useState('');
@@ -56,13 +56,11 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   const observerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const requestInFlightRef = useRef(false);
-  const lastRequestRef = useRef<{ filter: string; search: string; page: number }>({ filter: '', search: '', page: 0 });
+  const loadedParamsRef = useRef<{ filter: string; search: string } | null>(null);
 
-  const load = useCallback(async (state: string, page = 1, searchTerm = '', append = false) => {
+  const loadMRs = async (state: string, page = 1, searchTerm = '', append = false) => {
     // Prevent duplicate requests
     if (requestInFlightRef.current) return;
-    if (!append && lastRequestRef.current.filter === state && lastRequestRef.current.search === searchTerm && page === 1) return;
-    if (append && lastRequestRef.current.page === page) return;
 
     requestInFlightRef.current = true;
     
@@ -84,7 +82,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
       
       setPagination(response.pagination);
       setHasMore(page < response.pagination.totalPages);
-      lastRequestRef.current = { filter: state, search: searchTerm, page };
+      loadedParamsRef.current = { filter: state, search: searchTerm };
     } catch {
       setError('Failed to load MRs');
       if (!append) setMrs([]);
@@ -93,35 +91,35 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
       setLoadingMore(false);
       requestInFlightRef.current = false;
     }
-  }, [api]);
+  };
 
-  // Load data when filter or search changes (without including load in deps)
+  // Initial load on mount and when filter/search change
   useEffect(() => {
+    const params = { filter, search };
+    const paramsChanged = !loadedParamsRef.current || 
+                          loadedParamsRef.current.filter !== params.filter ||
+                          loadedParamsRef.current.search !== params.search;
+
+    if (!paramsChanged) return;
+
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
-    // Debounce search requests
-    if (search === '' && filter !== lastRequestRef.current.filter) {
-      // Filter change without search - load immediately
-      setMrs([]);
-      setPagination(null);
-      setHasMore(true);
-      load(filter, 1, '', false);
-    } else if (search !== '') {
-      // Search change - debounce
+
+    // For search, debounce the request
+    if (search) {
       searchTimeoutRef.current = setTimeout(() => {
         setMrs([]);
         setPagination(null);
         setHasMore(true);
-        load(filter, 1, search, false);
+        loadMRs(filter, 1, search, false);
       }, 300);
-    } else if (refreshKey) {
-      // Refresh key change
+    } else {
+      // For filter/refresh, load immediately
       setMrs([]);
       setPagination(null);
       setHasMore(true);
-      load(filter, 1, search, false);
+      loadMRs(filter, 1, '', false);
     }
 
     return () => {
@@ -129,17 +127,17 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [filter, search, refreshKey, load]);
+  }, [filter, search, refreshKey, api]);
 
-  // Infinite scrolling with minimal dependencies
+  // Infinite scrolling
   useEffect(() => {
-    if (!observerRef.current) return;
+    if (!observerRef.current || !pagination) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && mrs.length > 0 && !requestInFlightRef.current) {
-          const nextPage = (pagination?.page || 1) + 1;
-          load(filter, nextPage, search, true);
+          const nextPage = pagination.page + 1;
+          loadMRs(filter, nextPage, search, true);
         }
       },
       { threshold: 0.1 }
@@ -152,7 +150,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         observer.unobserve(observerRef.current);
       }
     };
-  }, [pagination?.page, hasMore, mrs.length, filter, search, load]);
+  }, [hasMore, loading, loadingMore, mrs.length, pagination, filter, search]);
 
   const handleClose = async (e: React.MouseEvent, mr: MR) => {
     e.stopPropagation();
