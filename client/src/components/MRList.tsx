@@ -104,7 +104,11 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
       // Client-side filter: GitLab search can return non-matching results
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
-        items = items.filter(mr => mr.title.toLowerCase().includes(term));
+        items = items.filter(mr =>
+          mr.title.toLowerCase().includes(term) ||
+          mr.author.name.toLowerCase().includes(term) ||
+          mr.author.username.toLowerCase().includes(term)
+        );
       }
       
       if (append) {
