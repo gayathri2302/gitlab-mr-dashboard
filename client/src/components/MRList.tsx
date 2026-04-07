@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { apiFor } from '../api';
 import type { MR, MRListResponse } from '../types';
 
@@ -43,7 +43,7 @@ const stateColor: Record<string, string> = {
 };
 
 export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, refreshKey }: Props) {
-  const api = apiFor(projectId);
+  const api = useMemo(() => apiFor(projectId), [projectId]);
   const [mrs, setMrs] = useState<MR[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -57,6 +57,23 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const requestInFlightRef = useRef(false);
   const loadedParamsRef = useRef<{ filter: string; search: string } | null>(null);
+
+  // Refs for stable IntersectionObserver callback
+  const hasMoreRef = useRef(hasMore);
+  const loadingRef = useRef(loading);
+  const loadingMoreRef = useRef(loadingMore);
+  const paginationRef = useRef(pagination);
+  const filterRef = useRef(filter);
+  const searchRef = useRef(search);
+  const mrsLengthRef = useRef(mrs.length);
+
+  hasMoreRef.current = hasMore;
+  loadingRef.current = loading;
+  loadingMoreRef.current = loadingMore;
+  paginationRef.current = pagination;
+  filterRef.current = filter;
+  searchRef.current = search;
+  mrsLengthRef.current = mrs.length;
 
   const loadMRs = async (state: string, page = 1, searchTerm = '', append = false) => {
     // Prevent duplicate requests
@@ -127,30 +144,35 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [filter, search, refreshKey, api]);
+  }, [filter, search, refreshKey]);
 
-  // Infinite scrolling
+  // Infinite scrolling — use refs so the observer is stable and not recreated on every load
   useEffect(() => {
-    if (!observerRef.current || !pagination) return;
+    const el = observerRef.current;
+    if (!el) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && mrs.length > 0 && !requestInFlightRef.current) {
-          const nextPage = pagination.page + 1;
-          loadMRs(filter, nextPage, search, true);
+        if (
+          entries[0].isIntersecting &&
+          hasMoreRef.current &&
+          !loadingRef.current &&
+          !loadingMoreRef.current &&
+          mrsLengthRef.current > 0 &&
+          !requestInFlightRef.current &&
+          paginationRef.current
+        ) {
+          const nextPage = paginationRef.current.page + 1;
+          loadMRs(filterRef.current, nextPage, searchRef.current, true);
         }
       },
       { threshold: 0.1 }
     );
 
-    observer.observe(observerRef.current);
+    observer.observe(el);
 
-    return () => {
-      if (observerRef.current) {
-        observer.unobserve(observerRef.current);
-      }
-    };
-  }, [hasMore, loading, loadingMore, mrs.length, pagination, filter, search]);
+    return () => observer.disconnect();
+  }, []);
 
   const handleClose = async (e: React.MouseEvent, mr: MR) => {
     e.stopPropagation();
@@ -254,12 +276,8 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
           </div>
         ))}
         
-        {/* Infinite scroll trigger */}
-        {hasMore && !loading && !loadingMore && mrs.length > 0 && (
-          <div ref={observerRef} className="flex items-center justify-center py-4">
-            <div className="text-xs text-gray-500">Loading more...</div>
-          </div>
-        )}
+        {/* Infinite scroll sentinel — always rendered so observer stays attached */}
+        <div ref={observerRef} style={{ height: 1 }} />
         
         {!loading && !loadingMore && !hasMore && mrs.length > 0 && (
           <div className="flex items-center justify-center py-4">
