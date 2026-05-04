@@ -176,7 +176,7 @@ export default function CreateMRModal({ projectId, onClose, onCreated }: Props) 
               onChange={e => set('target_branch', e.target.value)}
               className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-orange-500"
             >
-              {['DEV', 'QA', 'UAT', 'CLIENTUAT', 'PROD', 'main', 'master'].map(b => (
+              {['DEV', 'QA', 'UAT', 'CLIENTUAT', 'REGR', 'PROD', 'main', 'master'].map(b => (
                 <option key={b} value={b}>{b}</option>
               ))}
             </select>
