@@ -36,6 +36,12 @@ export function apiFor(projectId: number) {
     getMR: (iid: number) =>
       http.get<MR>(`/${p}/mrs/${iid}`).then(r => r.data),
 
+    getCommitDiff: (sha: string) =>
+      http.get<Diff[]>(`/${p}/commits/${sha}/diff`).then(r => r.data),
+
+    getCommitDetail: (sha: string) =>
+      http.get<Commit & { message: string; parent_ids: string[] }>(`/${p}/commits/${sha}`).then(r => r.data),
+
     getMRChanges: (iid: number) =>
       http.get<Diff[]>(`/${p}/mrs/${iid}/changes`).then(r => r.data),
 

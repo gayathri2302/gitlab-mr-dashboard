@@ -570,7 +570,7 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
           diffsLoading ? <div className="text-gray-500 text-sm">Loading diffs...</div> : <DiffViewer diffs={diffs} />
         )}
         {tab === 'commits' && (
-          <CommitsView mrIid={mr.iid} loadCommits={() => api.getMRCommits(mr.iid)} onCountLoaded={setCommitCount} />
+          <CommitsView mrIid={mr.iid} projectId={projectId} loadCommits={() => api.getMRCommits(mr.iid)} onCountLoaded={setCommitCount} />
         )}
         {tab === 'pipeline' && (
           <PipelineView mrIid={mr.iid} projectId={projectId} />

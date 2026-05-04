@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import type { Commit } from '../types';
+import { getStoredToken } from '../auth/SessionContext';
 
 interface Props {
   mrIid: number;
+  projectId: number;
   loadCommits: () => Promise<Commit[]>;
   onCountLoaded?: (n: number) => void;
 }
 
-export default function CommitsView({ mrIid, loadCommits, onCountLoaded }: Props) {
+export default function CommitsView({ mrIid, projectId, loadCommits, onCountLoaded }: Props) {
   const [commits, setCommits] = useState<Commit[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,7 +28,15 @@ export default function CommitsView({ mrIid, loadCommits, onCountLoaded }: Props
       <p className="text-xs text-gray-500 mb-3">{commits.length} commit{commits.length !== 1 ? 's' : ''}</p>
       {commits.map(c => (
         <div key={c.id} className="flex items-start gap-3 p-3 bg-gray-800 rounded hover:bg-gray-750 transition-colors group">
-          <span className="font-mono text-xs text-orange-400 shrink-0 mt-0.5 w-16">{c.short_id}</span>
+          <a
+            href={`?view=commit&sha=${c.id}&project=${projectId}&t=${encodeURIComponent(getStoredToken() ?? '')}`}
+            target="_blank"
+            rel="noreferrer"
+            title="View commit diff"
+            className="font-mono text-xs text-orange-400 hover:text-orange-300 hover:underline shrink-0 mt-0.5 w-16"
+          >
+            {c.short_id}
+          </a>
           <div className="flex-1 min-w-0">
             <p className="text-sm text-gray-200 leading-snug">{c.title}</p>
             <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
