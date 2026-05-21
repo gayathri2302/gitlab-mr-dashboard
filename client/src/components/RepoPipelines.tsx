@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFor } from '../api';
+import { useSession } from '../auth/SessionContext';
 import type { Pipeline, Job } from '../types';
 import BuildLogs from './BuildLogs';
 
@@ -280,6 +281,8 @@ function PipelineJobs({
 
 export default function RepoPipelines({ projectId }: Props) {
   const api = apiFor(projectId);
+  const { user } = useSession();
+  const isMerger = user?.role === 'merger';
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -388,7 +391,7 @@ export default function RepoPipelines({ projectId }: Props) {
                 <span className="text-xs text-gray-600 ml-auto shrink-0">{date}</span>
 
                 {/* Cancel for active pipelines */}
-                {(p.status === 'running' || p.status === 'pending') && (
+                {isMerger && (p.status === 'running' || p.status === 'pending') && (
                   <button
                     onClick={(e) => handleCancelPipeline(p.id, e)}
                     disabled={pipelineAction === p.id}
@@ -399,7 +402,7 @@ export default function RepoPipelines({ projectId }: Props) {
                 )}
 
                 {/* Retry for failed/canceled pipelines */}
-                {(p.status === 'failed' || p.status === 'canceled') && (
+                {isMerger && (p.status === 'failed' || p.status === 'canceled') && (
                   <button
                     onClick={(e) => handleRetryPipeline(p.id, e)}
                     disabled={pipelineAction === p.id}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFor } from '../api';
+import { useSession } from '../auth/SessionContext';
 import type { MR, Diff, AwardEmoji, Discussion } from '../types';
 import DiffViewer from './DiffViewer';
 import PipelineView from './PipelineView';
@@ -52,6 +53,8 @@ const REACTION_EMOJIS = [
 
 export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props) {
   const api = apiFor(projectId);
+  const { user } = useSession();
+  const isMerger = user?.role === 'merger';
   const [mr, setMr] = useState<MR>(initialMR);
   const [tab, setTab] = useState<Tab>('details');
   const [diffs, setDiffs] = useState<Diff[]>([]);
@@ -384,7 +387,7 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
           </button>
 
           {/* Merge */}
-          {mr.state === 'opened' && (
+          {mr.state === 'opened' && isMerger && (
             <button
               onClick={() => setShowMergeConfirm(true)}
               disabled={!canMerge}
@@ -620,7 +623,7 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
                           >
                             {replyingTo === discussion.id ? 'Posting...' : 'Reply'}
                           </button>
-                          {discussion.resolvable && (
+                          {discussion.resolvable && isMerger && (
                             <button
                               onClick={() => handleResolveDiscussion(discussion.id, discussion.resolved)}
                               disabled={replyingTo === discussion.id}
@@ -642,13 +645,15 @@ export default function MRDetail({ mr: initialMR, projectId, onMutated }: Props)
                             by {discussion.resolved_by.name} on {new Date(discussion.resolved_at || '').toLocaleDateString()}
                           </span>
                         )}
-                        <button
-                          onClick={() => handleResolveDiscussion(discussion.id, discussion.resolved)}
-                          disabled={replyingTo === discussion.id}
-                          className="text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 px-2 py-1 rounded"
-                        >
-                          {replyingTo === discussion.id ? 'Processing...' : 'Re-open'}
-                        </button>
+                        {isMerger && (
+                          <button
+                            onClick={() => handleResolveDiscussion(discussion.id, discussion.resolved)}
+                            disabled={replyingTo === discussion.id}
+                            className="text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 px-2 py-1 rounded"
+                          >
+                            {replyingTo === discussion.id ? 'Processing...' : 'Re-open'}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

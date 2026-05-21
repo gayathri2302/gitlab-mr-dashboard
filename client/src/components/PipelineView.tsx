@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFor } from '../api';
+import { useSession } from '../auth/SessionContext';
 import type { Pipeline, Job } from '../types';
 import BuildLogs from './BuildLogs';
 
@@ -42,6 +43,8 @@ const pipelineStatusBadge: Record<string, string> = {
 
 export default function PipelineView({ mrIid, projectId }: Props) {
   const api = apiFor(projectId);
+  const { user } = useSession();
+  const isMerger = user?.role === 'merger';
   const [data, setData] = useState<{ pipeline: Pipeline; jobs: Job[]; source: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -211,7 +214,7 @@ export default function PipelineView({ mrIid, projectId }: Props) {
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {(pipeline.status === 'running' || pipeline.status === 'pending') && (
+          {isMerger && (pipeline.status === 'running' || pipeline.status === 'pending') && (
             <button
               onClick={handleCancelPipeline}
               className="text-xs bg-gray-700 hover:bg-red-800 text-white px-2 py-0.5 rounded"
@@ -219,7 +222,7 @@ export default function PipelineView({ mrIid, projectId }: Props) {
               ⊘ Cancel
             </button>
           )}
-          {(pipeline.status === 'failed' || pipeline.status === 'canceled') && (
+          {isMerger && (pipeline.status === 'failed' || pipeline.status === 'canceled') && (
             <button
               onClick={handleRetryPipeline}
               className="text-xs bg-yellow-700 hover:bg-yellow-600 text-white px-2 py-0.5 rounded"
