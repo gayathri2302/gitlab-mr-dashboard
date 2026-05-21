@@ -221,7 +221,7 @@ function PipelineJobs({
                   <span className="text-xs opacity-60 shrink-0">(allowed)</span>
                 )}
                 {/* Play button for manual jobs only */}
-                {job.status === 'manual' && (
+                {isMerger && job.status === 'manual' && (
                   <button
                     onClick={() => handlePlayJob(job)}
                     disabled={actionLoading === job.id}
@@ -231,7 +231,7 @@ function PipelineJobs({
                   </button>
                 )}
                 {/* Cancel for running/pending jobs */}
-                {(job.status === 'running' || job.status === 'pending') && (
+                {isMerger && (job.status === 'running' || job.status === 'pending') && (
                   <button
                     onClick={() => handleCancelJob(job.id)}
                     disabled={actionLoading === job.id}
@@ -241,7 +241,7 @@ function PipelineJobs({
                   </button>
                 )}
                 {/* Retry + Logs for failed jobs */}
-                {job.status === 'failed' && (
+                {isMerger && job.status === 'failed' && (
                   <button
                     onClick={() => handleRetryJob(job.id)}
                     disabled={actionLoading === job.id}

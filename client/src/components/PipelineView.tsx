@@ -307,7 +307,7 @@ export default function PipelineView({ mrIid, projectId }: Props) {
                     <span className="text-xs opacity-60">(allowed)</span>
                   )}
                   {/* Cancel for running/pending jobs */}
-                  {(job.status === 'running' || job.status === 'pending') && (
+                  {isMerger && (job.status === 'running' || job.status === 'pending') && (
                     <button
                       onClick={() => handleCancelJob(job.id)}
                       disabled={actionLoading === job.id}
@@ -317,7 +317,7 @@ export default function PipelineView({ mrIid, projectId }: Props) {
                     </button>
                   )}
                   {/* Play button for manual jobs */}
-                  {job.status === 'manual' && (
+                  {isMerger && job.status === 'manual' && (
                     <button
                       onClick={() => handlePlayJob(job)}
                       disabled={actionLoading === job.id}
@@ -329,13 +329,15 @@ export default function PipelineView({ mrIid, projectId }: Props) {
                   {/* Retry button for failed jobs */}
                   {job.status === 'failed' && (
                     <>
-                      <button
-                        onClick={() => handleRetryJob(job.id)}
-                        disabled={actionLoading === job.id}
-                        className="text-xs bg-yellow-700 hover:bg-yellow-600 text-white px-2 py-0.5 rounded disabled:opacity-50"
-                      >
-                        {actionLoading === job.id ? '...' : '↻ Retry'}
-                      </button>
+                      {isMerger && (
+                        <button
+                          onClick={() => handleRetryJob(job.id)}
+                          disabled={actionLoading === job.id}
+                          className="text-xs bg-yellow-700 hover:bg-yellow-600 text-white px-2 py-0.5 rounded disabled:opacity-50"
+                        >
+                          {actionLoading === job.id ? '...' : '↻ Retry'}
+                        </button>
+                      )}
                       {!job.allow_failure && (
                         <button
                           onClick={() => setSelectedJob(job)}
