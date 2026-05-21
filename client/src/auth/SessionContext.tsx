@@ -60,6 +60,11 @@ export function useSession() {
   return ctx;
 }
 
+export function useRole(): string {
+  const ctx = useContext(SessionContext);
+  return ctx?.user?.role ?? 'developer';
+}
+
 export function getStoredToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
 }

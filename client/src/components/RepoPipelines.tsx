@@ -48,6 +48,8 @@ function PipelineJobs({
   projectId: number;
 }) {
   const api = apiFor(projectId);
+  const { user } = useSession();
+  const isMerger = user?.role === 'merger';
   const [jobs, setJobs] = useState<Job[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -182,7 +184,7 @@ function PipelineJobs({
       )}
 
       {/* Manual jobs banner */}
-      {manualJobs.length > 0 && (
+      {isMerger && manualJobs.length > 0 && (
         <div className="p-2.5 bg-orange-950 border border-orange-800 rounded">
           <p className="text-orange-400 text-xs font-semibold mb-2">
             {manualJobs.length} manual job{manualJobs.length > 1 ? 's' : ''} awaiting action
