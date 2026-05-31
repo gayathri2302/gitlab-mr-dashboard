@@ -74,6 +74,33 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   searchRef.current = search;
   mrsLengthRef.current = mrs.length;
 
+  // When search is a pure number, look up that MR by iid directly —
+  // this works for both opened and merged MRs without changing the filter tab.
+  const loadMRByIid = async (iid: number) => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setLoading(true);
+    setError('');
+    try {
+      const mr = await api.getMR(iid);
+      if (controller.signal.aborted) return;
+      setMrs(mr ? [mr] : []);
+      setPagination(null);
+      setHasMore(false);
+    } catch (e: any) {
+      if (controller.signal.aborted) return;
+      setMrs([]);
+      setError(`MR !${iid} not found`);
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }
+  };
+
   const loadMRs = async (state: string, page = 1, searchTerm = '', append = false) => {
     // Abort any previous in-flight request
     if (abortControllerRef.current) {
@@ -81,7 +108,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    
+
     if (page === 1) {
       setLoading(true);
     } else {
@@ -110,13 +137,13 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
           mr.author.username.toLowerCase().includes(term)
         );
       }
-      
+
       if (append) {
         setMrs(prev => [...prev, ...items]);
       } else {
         setMrs(items);
       }
-      
+
       setPagination(pag);
       setHasMore(page < pag.totalPages);
     } catch (e: any) {
@@ -138,8 +165,19 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
       clearTimeout(searchTimeoutRef.current);
     }
 
-    // For search, debounce the request
-    if (search) {
+    const iidSearch = search.trim().match(/^!?(\d+)$/);
+
+    if (iidSearch) {
+      // Numeric search (e.g. "123" or "!123") — look up by MR number directly,
+      // works for both opened and merged regardless of the active filter tab.
+      searchTimeoutRef.current = setTimeout(() => {
+        setMrs([]);
+        setPagination(null);
+        setHasMore(false);
+        loadMRByIid(Number(iidSearch[1]));
+      }, 300);
+    } else if (search) {
+      // Text search — debounce then fetch from current filter tab
       searchTimeoutRef.current = setTimeout(() => {
         setMrs([]);
         setPagination(null);
@@ -147,7 +185,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         loadMRs(filter, 1, search, false);
       }, 300);
     } else {
-      // For filter/refresh, load immediately
+      // No search — load current filter tab immediately
       setMrs([]);
       setPagination(null);
       setHasMore(true);
@@ -224,7 +262,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         {/* Search */}
         <input
           type="text"
-          placeholder="Search..."
+          placeholder="Search by title, author or MR number (!123)…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-orange-500 mb-2"
@@ -301,7 +339,11 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         
         {!loading && !error && mrs.length === 0 && (
           <div className="p-4 text-center text-gray-600 text-xs">
-            {search ? 'No MRs found matching your search' : 'No MRs found'}
+            {search
+              ? search.trim().match(/^!?(\d+)$/)
+                ? `No MR found with number !${search.trim().replace(/^!/, '')}`
+                : 'No MRs found matching your search'
+              : 'No MRs found'}
           </div>
         )}
       </div>
