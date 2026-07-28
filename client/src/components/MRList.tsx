@@ -388,7 +388,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
               <div className="relative flex-1">
                 <input
                   type="text"
-                  placeholder="username…"
+                  placeholder="name or username…"
                   value={authorFilter}
                   onChange={e => setAuthorFilter(e.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 pr-5"
@@ -409,7 +409,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
               <div className="relative flex-1">
                 <input
                   type="text"
-                  placeholder={filter === 'merged' ? 'username…' : 'merged tab only'}
+                  placeholder={filter === 'merged' ? 'name or username…' : 'merged tab only'}
                   value={mergedByFilter}
                   onChange={e => setMergedByFilter(e.target.value)}
                   disabled={filter !== 'merged'}
