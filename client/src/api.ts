@@ -30,8 +30,31 @@ http.interceptors.response.use(
 export function apiFor(projectId: number) {
   const p = projectId;
   return {
-    listMRs: (state = 'opened', page = 1, perPage = 20, search = '') =>
-      http.get<MRListResponse>(`/${p}/mrs`, { params: { state, page, per_page: perPage, search } }).then(r => r.data),
+    listMRs: (
+      state = 'opened',
+      page = 1,
+      perPage = 20,
+      search = '',
+      filters: {
+        sourceBranch?: string;
+        targetBranch?: string;
+        authorUsername?: string;
+        mergedByUsername?: string;
+        orderBy?: string;
+        sort?: string;
+      } = {},
+    ) =>
+      http.get<MRListResponse>(`/${p}/mrs`, {
+        params: {
+          state, page, per_page: perPage, search,
+          ...(filters.sourceBranch     && { source_branch:      filters.sourceBranch }),
+          ...(filters.targetBranch     && { target_branch:      filters.targetBranch }),
+          ...(filters.authorUsername   && { author_username:    filters.authorUsername }),
+          ...(filters.mergedByUsername && { merged_by_username: filters.mergedByUsername }),
+          ...(filters.orderBy          && { order_by:           filters.orderBy }),
+          ...(filters.sort             && { sort:               filters.sort }),
+        },
+      }).then(r => r.data),
 
     getMR: (iid: number) =>
       http.get<MR>(`/${p}/mrs/${iid}`).then(r => r.data),

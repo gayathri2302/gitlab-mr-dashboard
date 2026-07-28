@@ -42,6 +42,17 @@ const stateColor: Record<string, string> = {
   closed: 'text-red-400',
 };
 
+type SortBy = 'updated_desc' | 'created_desc' | 'id_desc' | 'id_asc';
+
+function parseSortBy(s: SortBy): { orderBy: string; sort: string } {
+  switch (s) {
+    case 'created_desc': return { orderBy: 'created_at', sort: 'desc' };
+    case 'id_desc':      return { orderBy: 'id',         sort: 'desc' };
+    case 'id_asc':       return { orderBy: 'id',         sort: 'asc'  };
+    default:             return { orderBy: 'updated_at', sort: 'desc' };
+  }
+}
+
 export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, refreshKey }: Props) {
   const api = useMemo(() => apiFor(projectId), [projectId]);
   const [mrs, setMrs] = useState<MR[]>([]);
@@ -57,6 +68,14 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Advanced filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [sourceBranch, setSourceBranch] = useState('');
+  const [targetBranch, setTargetBranch] = useState('');
+  const [authorFilter, setAuthorFilter] = useState('');
+  const [mergedByFilter, setMergedByFilter] = useState('');
+  const [sortBy, setSortBy] = useState<SortBy>('updated_desc');
+
   // Refs for stable IntersectionObserver callback
   const hasMoreRef = useRef(hasMore);
   const loadingRef = useRef(loading);
@@ -65,6 +84,11 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   const filterRef = useRef(filter);
   const searchRef = useRef(search);
   const mrsLengthRef = useRef(mrs.length);
+  const sourceBranchRef   = useRef(sourceBranch);
+  const targetBranchRef   = useRef(targetBranch);
+  const authorFilterRef   = useRef(authorFilter);
+  const mergedByFilterRef = useRef(mergedByFilter);
+  const sortByRef         = useRef(sortBy);
 
   hasMoreRef.current = hasMore;
   loadingRef.current = loading;
@@ -73,6 +97,11 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
   filterRef.current = filter;
   searchRef.current = search;
   mrsLengthRef.current = mrs.length;
+  sourceBranchRef.current   = sourceBranch;
+  targetBranchRef.current   = targetBranch;
+  authorFilterRef.current   = authorFilter;
+  mergedByFilterRef.current = mergedByFilter;
+  sortByRef.current         = sortBy;
 
   // When search is a pure number, look up that MR by iid directly —
   // this works for both opened and merged MRs without changing the filter tab.
@@ -117,7 +146,15 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
     setError('');
 
     try {
-      const response = await api.listMRs(state, page, 20, searchTerm);
+      const { orderBy, sort } = parseSortBy(sortByRef.current);
+      const response = await api.listMRs(state, page, 20, searchTerm, {
+        sourceBranch:     sourceBranchRef.current,
+        targetBranch:     targetBranchRef.current,
+        authorUsername:   authorFilterRef.current,
+        mergedByUsername: mergedByFilterRef.current,
+        orderBy,
+        sort,
+      });
 
       // If this request was aborted while awaiting, discard its results
       if (controller.signal.aborted) return;
@@ -197,7 +234,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [filter, search, refreshKey]);
+  }, [filter, search, refreshKey, sourceBranch, targetBranch, authorFilter, mergedByFilter, sortBy]);
 
   // Infinite scrolling — use refs so the observer is stable and not recreated on every load
   useEffect(() => {
@@ -240,6 +277,10 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
     finally { setClosingId(null); }
   };
 
+  const activeFilterCount =
+    [sourceBranch, targetBranch, authorFilter, mergedByFilter].filter(Boolean).length +
+    (sortBy !== 'updated_desc' ? 1 : 0);
+
   return (
     <div className="flex flex-col h-full">
       {/* Controls */}
@@ -267,6 +308,139 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
           onChange={e => setSearch(e.target.value)}
           className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-orange-500 mb-2"
         />
+
+        {/* Filter toggle row */}
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={() => setShowFilters(f => !f)}
+            className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
+              showFilters ? 'bg-orange-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            <span className="text-gray-400">{showFilters ? '▲' : '▼'}</span>
+            <span>Filters</span>
+            {activeFilterCount > 0 && (
+              <span className="ml-0.5 bg-orange-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none font-bold">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => {
+                setSourceBranch('');
+                setTargetBranch('');
+                setAuthorFilter('');
+                setMergedByFilter('');
+                setSortBy('updated_desc');
+              }}
+              className="text-xs text-gray-500 hover:text-orange-400 transition-colors"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {/* Filter panel */}
+        {showFilters && (
+          <div className="mb-2 border border-gray-700 rounded p-2 space-y-1.5 bg-gray-900/50">
+            {/* Source Branch */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-gray-500 w-16 shrink-0">Source</label>
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="branch name…"
+                  value={sourceBranch}
+                  onChange={e => setSourceBranch(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 pr-5"
+                />
+                {sourceBranch && (
+                  <button
+                    onClick={() => setSourceBranch('')}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs leading-none"
+                  >×</button>
+                )}
+              </div>
+            </div>
+            {/* Target Branch */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-gray-500 w-16 shrink-0">Target</label>
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="branch name…"
+                  value={targetBranch}
+                  onChange={e => setTargetBranch(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 pr-5"
+                />
+                {targetBranch && (
+                  <button
+                    onClick={() => setTargetBranch('')}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs leading-none"
+                  >×</button>
+                )}
+              </div>
+            </div>
+            {/* Author */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-gray-500 w-16 shrink-0">Author</label>
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="username…"
+                  value={authorFilter}
+                  onChange={e => setAuthorFilter(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 pr-5"
+                />
+                {authorFilter && (
+                  <button
+                    onClick={() => setAuthorFilter('')}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs leading-none"
+                  >×</button>
+                )}
+              </div>
+            </div>
+            {/* Merged by — only relevant on merged tab */}
+            <div className="flex items-center gap-1.5">
+              <label className={`text-xs w-16 shrink-0 ${filter === 'merged' ? 'text-gray-500' : 'text-gray-700'}`}>
+                Merged by
+              </label>
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder={filter === 'merged' ? 'username…' : 'merged tab only'}
+                  value={mergedByFilter}
+                  onChange={e => setMergedByFilter(e.target.value)}
+                  disabled={filter !== 'merged'}
+                  className={`w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs placeholder-gray-600 focus:outline-none focus:border-orange-500 pr-5 ${
+                    filter === 'merged' ? 'text-gray-200' : 'text-gray-700 cursor-not-allowed opacity-50'
+                  }`}
+                />
+                {mergedByFilter && filter === 'merged' && (
+                  <button
+                    onClick={() => setMergedByFilter('')}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs leading-none"
+                  >×</button>
+                )}
+              </div>
+            </div>
+            {/* Sort */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-gray-500 w-16 shrink-0">Sort</label>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as SortBy)}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500"
+              >
+                <option value="updated_desc">Updated ↓ (default)</option>
+                <option value="created_desc">Created ↓</option>
+                <option value="id_desc">MR# ↓ (newest first)</option>
+                <option value="id_asc">MR# ↑ (oldest first)</option>
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* New MR button */}
         <button
