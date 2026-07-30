@@ -113,7 +113,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
     setLoading(true);
     setError('');
     try {
-      const mr = await api.getMR(iid);
+      const mr = await api.getMR(iid, controller.signal);
       if (controller.signal.aborted) return;
       setMrs(mr ? [mr] : []);
       setPagination(null);
@@ -154,7 +154,7 @@ export default function MRList({ projectId, selectedIid, onSelect, onCreateMR, r
         mergedByUsername: mergedByFilterRef.current,
         orderBy,
         sort,
-      });
+      }, controller.signal);
 
       // If this request was aborted while awaiting, discard its results
       if (controller.signal.aborted) return;

@@ -43,8 +43,10 @@ export function apiFor(projectId: number) {
         orderBy?: string;
         sort?: string;
       } = {},
+      signal?: AbortSignal,
     ) =>
       http.get<MRListResponse>(`/${p}/mrs`, {
+        signal,
         params: {
           state, page, per_page: perPage, search,
           ...(filters.sourceBranch     && { source_branch:      filters.sourceBranch }),
@@ -56,8 +58,8 @@ export function apiFor(projectId: number) {
         },
       }).then(r => r.data),
 
-    getMR: (iid: number) =>
-      http.get<MR>(`/${p}/mrs/${iid}`).then(r => r.data),
+    getMR: (iid: number, signal?: AbortSignal) =>
+      http.get<MR>(`/${p}/mrs/${iid}`, { signal }).then(r => r.data),
 
     getCommitDiff: (sha: string) =>
       http.get<Diff[]>(`/${p}/commits/${sha}/diff`).then(r => r.data),
